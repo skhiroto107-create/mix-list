@@ -148,7 +148,21 @@ textarea{min-height:56px;resize:vertical}
 .checks{display:flex;gap:18px;flex-wrap:wrap}
 .checks label{flex-direction:row;align-items:center;gap:6px;font-size:13px;color:var(--ink)}
 .checks input{width:auto;accent-color:var(--ink)}
-.live{font-size:11px;font-family:var(--f-mono);color:var(--mute);min-height:1em}
+.decks{display:flex;flex-direction:column;gap:18px}
+.dhead{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.dhead .lt{font-family:var(--f-mono);font-size:10px;letter-spacing:.14em;color:var(--mute)}
+.dhead .tools{display:flex;gap:6px;align-items:center}
+.filebtn{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--ink);border-radius:999px;padding:3px 12px;font-size:11px;color:var(--ink);cursor:pointer;flex-direction:row;letter-spacing:0}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;border:0;padding:0}
+.filebtn:focus-within{outline:2px solid var(--ink);outline-offset:2px}
+.rm{border:0;background:none;color:var(--mute);font-size:16px;line-height:1;padding:2px 6px;border-radius:999px}
+.rm:hover{color:var(--ink)}
+.det{grid-column:1/-1;font-family:var(--f-mono);font-size:10px;color:var(--mute);min-height:0}
+.det:empty{display:none}
+.det.busy::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;border:1.5px solid var(--ink);border-right-color:transparent;vertical-align:-1px;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.addDeck{align-self:flex-start}
+.live{font-size:11px;font-family:var(--f-mono);color:var(--mute);min-height:1em;white-space:pre-line}
 .actions{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;align-items:center;padding-top:6px}
 .actions .r{display:flex;gap:8px;margin-left:auto}
 .btn{border:1px solid var(--line);background:transparent;border-radius:999px;padding:9px 20px;font-size:13px}
@@ -191,18 +205,8 @@ textarea{min-height:56px;resize:vertical}
 <dialog id="dlg">
   <form class="sheet" id="form" method="dialog">
     <h2 id="fTitle">新しいマッシュアップ</h2>
-    <fieldset class="fa"><legend>DECK A</legend>
-      <label class="full">曲名<input id="aT" required autocomplete="off"></label>
-      <label class="full">アーティスト<input id="aR" autocomplete="off"></label>
-      <label>BPM<input id="aB" type="number" inputmode="decimal" min="40" max="220" step="0.1"></label>
-      <label>キー（Camelot）<select id="aK"></select></label>
-    </fieldset>
-    <fieldset class="fb"><legend>DECK B</legend>
-      <label class="full">曲名<input id="bT" required autocomplete="off"></label>
-      <label class="full">アーティスト<input id="bR" autocomplete="off"></label>
-      <label>BPM<input id="bB" type="number" inputmode="decimal" min="40" max="220" step="0.1"></label>
-      <label>キー（Camelot）<select id="bK"></select></label>
-    </fieldset>
+    <div class="decks" id="decks"></div>
+    <button type="button" class="btn-s addDeck" id="addDeck">＋ 曲を追加</button>
     <div class="live" id="liveMatch"></div>
     <div class="grid2">
       <label class="full">マッシュアップ名（任意）<input id="mT" autocomplete="off"></label>
@@ -231,6 +235,7 @@ textarea{min-height:56px;resize:vertical}
 </dialog>
 
 
+<script src="/analyze.js" defer></script>
 <script>
 (function(){
 const $=id=>document.getElementById(id);
@@ -239,7 +244,7 @@ const FLOW=["idea","ready","posted"];
 const norm=st=>st==="making"?"idea":(STATUS[st]?st:"idea");
 const TABS=[["all","すべて"],["idea","アイデア"],["ready","完成"],["posted","投稿済み"]];
 const KEYS=[];for(let n=1;n<=12;n++){KEYS.push(n+"A",n+"B")}
-const KEYNAME={"1A":"A♭m","1B":"B","2A":"E♭m","2B":"F♯","3A":"B♭m","3B":"D♭","4A":"Fm","4B":"A♭","5A":"Cm","5B":"E♭","6A":"Gm","6B":"B♭","7A":"Dm","7B":"F","8A":"Am","8B":"C","9A":"Em","9B":"G","10A":"Bm","10B":"D","11A":"F♯m","11B":"A","12A":"D♯m","12B":"E"};
+const KEYNAME={"1A":"A♭m","1B":"B","2A":"E♭m","2B":"F♯","3A":"B♭m","3B":"D♭","4A":"Fm","4B":"A♭","5A":"Cm","5B":"E♭","6A":"Gm","6B":"B♭","7A":"Dm","7B":"F","8A":"Am","8B":"C","9A":"Em","9B":"G","10A":"Bm","10B":"D","11A":"F♯m","11B":"A","12A":"D♭m","12B":"E"};
 
 let view=new Date(new Date().getFullYear(),new Date().getMonth(),1), tracks=[], tab="all", db=null, editing=null, local=false;
 try{tab=localStorage.getItem("ml-tab")||"all"}catch(e){}
@@ -318,7 +323,7 @@ function renderList(){
   let items=tab==="all"?tracks.slice():tracks.filter(t=>t.status===tab);
   items.sort((a,b)=>{const x=sortKey(a),y=sortKey(b);return x[0]-y[0]||x[1]-y[1]});
   if(!items.length){
-    list.append(el("div",{class:"empty"},tracks.length?"このステータスの曲はまだありません。":"まだ曲がありません。右下の「追加」から、DECK A と DECK B の2曲を登録してください。"));
+    list.append(el("div",{class:"empty"},tracks.length?"このステータスの曲はまだありません。":"まだ曲がありません。右下の「追加」から、マッシュアップする曲を登録してください。"));
     return;
   }
   for(const t of items)list.append(card(t));
@@ -327,12 +332,27 @@ function trackRow(side,x){
   x=x||{};const meta=[x.bpm?x.bpm+" BPM":"",x.key?x.key+(KEYNAME[x.key]?" ("+KEYNAME[x.key]+")":""):""].filter(Boolean).join(" · ");
   return el("div",{class:"track "+side},el("span",{class:"ch"},side.toUpperCase()),el("span",{class:"t"},x.title||"未入力"),x.artist?el("span",{class:"ar"},x.artist):null,meta?el("span",{class:"meta"},meta):null);
 }
+const LET="ABCDEFGH";
+function decksOf(t){return Array.isArray(t.decks)&&t.decks.length?t.decks:[t.a,t.b].filter(Boolean)}
+// 1曲目（A）と各曲の相性をまとめる
+function compat(ds){
+  const base=ds[0]||{},keys=[],gaps=[];
+  ds.slice(1).forEach((d,i)=>{const L=LET[i+1];const km=camelot(base.key,d.key);if(km)keys.push({L,...km});const g=bpmGap(base.bpm,d.bpm);if(g!=null)gaps.push({L,g})});
+  return{keys,gaps};
+}
 function card(t){
-  const km=camelot(t.a?.key,t.b?.key),bg=bpmGap(t.a?.bpm,t.b?.bpm);
+  const ds=decksOf(t),cp=compat(ds);
   const chips=el("div",{class:"chips"});
   if(t.sample)chips.append(el("span",{class:"chip sample"},"サンプル"));
-  if(km)chips.append(el("span",{class:"chip "+(km.ok?"match":"clash")},km.txt));
-  if(bg!=null)chips.append(el("span",{class:"chip mono "+(bg<=6?"match":"clash")},"BPM差 "+bg.toFixed(1)+"%"));
+  if(cp.keys.length){
+    const bad=cp.keys.filter(k=>!k.ok);
+    const txt=ds.length===2?cp.keys[0].txt:bad.length?bad.map(k=>"A×"+k.L+" "+k.txt).join(" / "):"キー相性OK";
+    chips.append(el("span",{class:"chip "+(bad.length?"clash":"match")},txt));
+  }
+  if(cp.gaps.length){
+    const mx=Math.max(...cp.gaps.map(x=>x.g));
+    chips.append(el("span",{class:"chip mono "+(mx<=6?"match":"clash")},(ds.length>2?"BPM差 最大 ":"BPM差 ")+mx.toFixed(1)+"%"));
+  }
   if(t.memo)chips.append(el("span",{class:"chip",title:t.memo},t.memo.length>24?t.memo.slice(0,24)+"…":t.memo));
   const seg=el("div",{class:"seg",role:"group","aria-label":"ステータス"});
   FLOW.forEach((k,i)=>{
@@ -343,7 +363,7 @@ function card(t){
     el("div",{class:"sidebot"},
       t.postDate?el("span",{class:"date"},(t.status==="posted"?"投稿 ":"予定 ")+fmtMD(t.postDate)):null,
       el("button",{type:"button",class:"btn-s",onclick:()=>openForm(t)},"編集")));
-  return el("article",{class:"card"},el("div",{class:"mix"},t.title?el("div",{class:"mtitle"},t.title):null,trackRow("a",t.a),trackRow("b",t.b)),side,chips);
+  return el("article",{class:"card"},el("div",{class:"mix"},t.title?el("div",{class:"mtitle"},t.title):null,...ds.map((d,i)=>trackRow(LET[i].toLowerCase(),d))),side,chips);
 }
 
 /* ---------- data (Vercel API + Upstash Redis) ---------- */
@@ -389,21 +409,70 @@ $("pinDlg").addEventListener("cancel",e=>e.preventDefault());
 
 /* ---------- form ---------- */
 function fillKeys(sel){sel.append(el("option",{value:""},"—"));for(const k of KEYS)sel.append(el("option",{value:k},k+"  "+KEYNAME[k]))}
-fillKeys($("aK"));fillKeys($("bK"));
-function updateLive(){
-  const km=camelot($("aK").value,$("bK").value),bg=bpmGap($("aB").value,$("bB").value);
-  const parts=[];if(km)parts.push("キー: "+km.txt+(km.ok?" ✓":" !"));if(bg!=null)parts.push("BPM差: "+bg.toFixed(1)+"%"+(bg<=6?" ✓":" (テンポ調整大)"));
-  $("liveMatch").textContent=parts.join("   ");
+const MAXD=8;
+function deckBlock(d,i){
+  d=d||{};
+  const fs=el("fieldset",{class:"deckf"});
+  const file=el("input",{type:"file",accept:"audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.aif,.aiff","aria-label":"音源ファイルを選んでBPMとキーを検出"});
+  const tools=el("div",{class:"tools"},el("label",{class:"filebtn"},"♪ 音源から検出",file));
+  if(i>=2)tools.append(el("button",{type:"button",class:"rm","aria-label":"この曲を外す",onclick:()=>{fs.remove();relabel();updateLive()}},"×"));
+  fs.append(el("div",{class:"dhead"},el("span",{class:"lt"},"DECK "+LET[i]),tools));
+  const T=el("input",{class:"dT",autocomplete:"off"});T.value=d.title||"";if(i<2)T.required=true;
+  const R=el("input",{class:"dR",autocomplete:"off"});R.value=d.artist||"";
+  const B=el("input",{class:"dB",type:"number",inputmode:"decimal",min:"40",max:"220",step:"0.1"});B.value=d.bpm||"";
+  const K=el("select",{class:"dK"});fillKeys(K);K.value=d.key||"";
+  const det=el("div",{class:"det",role:"status"});
+  fs.append(el("label",{class:"full"},"曲名",T),el("label",{class:"full"},"アーティスト",R),el("label",{},"BPM",B),el("label",{},"キー（Camelot）",K),det);
+  B.addEventListener("input",updateLive);K.addEventListener("input",updateLive);
+  file.addEventListener("change",()=>{const f=file.files&&file.files[0];file.value="";if(f)detect(f,{T,R,B,K,det})});
+  return fs;
 }
-["aK","bK","aB","bB"].forEach(i=>$(i).addEventListener("input",updateLive));
+function relabel(){
+  const fs=[...$("decks").children];
+  fs.forEach((f,i)=>{f.querySelector(".lt").textContent="DECK "+LET[i]});
+  $("addDeck").hidden=fs.length>=MAXD;
+}
+function readDecks(){
+  const num=v=>v===""?null:+v;
+  return [...$("decks").children].map(f=>({title:f.querySelector(".dT").value.trim(),artist:f.querySelector(".dR").value.trim(),bpm:num(f.querySelector(".dB").value),key:f.querySelector(".dK").value}))
+    .filter((d,i)=>i<2||d.title||d.artist||d.bpm||d.key);
+}
+// 解析は1曲ずつ順番に行う（重い処理が重ならないように）
+let queue=Promise.resolve();
+function detect(f,x){
+  const name=window.MixAnalyze?MixAnalyze.fromFilename(f.name):{title:"",artist:""};
+  if(!x.T.value&&name.title)x.T.value=name.title;
+  if(!x.R.value&&name.artist)x.R.value=name.artist;
+  x.det.className="det busy";x.det.textContent="待機中… "+f.name;
+  queue=queue.then(async()=>{
+    try{
+      if(!window.MixAnalyze)throw new Error("解析エンジンを読み込めませんでした");
+      const r=await MixAnalyze.analyze(f,step=>{x.det.textContent=step+"… "+f.name});
+      if(r.bpm)x.B.value=r.bpm;
+      if(r.key)x.K.value=r.key;
+      x.det.className="det";
+      x.det.textContent="検出: "+[r.bpm?r.bpm+" BPM":"BPM 不明",r.key?r.key+"（"+r.keyName+"）":"キー 不明"].join(" · ")+(r.strength&&r.strength<0.5?"（キーは参考値）":"");
+      updateLive();
+    }catch(e){x.det.className="det";x.det.textContent=(e&&e.message)||"解析できませんでした"}
+  });
+}
+function updateLive(){
+  const ds=readDecks(),cp=compat(ds),lines=[];
+  ds.slice(1).forEach((d,i)=>{
+    const L=LET[i+1],k=cp.keys.find(x=>x.L===L),g=cp.gaps.find(x=>x.L===L),parts=[];
+    if(k)parts.push("キー "+k.txt+(k.ok?" ✓":" !"));
+    if(g)parts.push("BPM差 "+g.g.toFixed(1)+"%"+(g.g<=6?" ✓":" (テンポ調整大)"));
+    if(parts.length)lines.push("A×"+L+"  "+parts.join("  "));
+  });
+  $("liveMatch").textContent=lines.join("\n");
+}
+$("addDeck").addEventListener("click",()=>{const n=$("decks").children.length;if(n>=MAXD)return;$("decks").append(deckBlock({},n));relabel();$("decks").lastChild.querySelector(".dT").focus()});
 function openForm(t){
   editing=t||null;
   $("fTitle").textContent=t?"マッシュアップを編集":"新しいマッシュアップ";
-  const a=t?.a||{},b=t?.b||{};
-  $("aT").value=a.title||"";$("aR").value=a.artist||"";$("aB").value=a.bpm||"";$("aK").value=a.key||"";
-  $("bT").value=b.title||"";$("bR").value=b.artist||"";$("bB").value=b.bpm||"";$("bK").value=b.key||"";
+  const ds=t?decksOf(t):[];while(ds.length<2)ds.push({});
+  const box=$("decks");box.textContent="";ds.forEach((d,i)=>box.append(deckBlock(d,i)));relabel();
   $("mT").value=t?.title||"";$("st").value=t?.status||"idea";$("pd").value=t?.postDate||"";
-
   $("memo").value=t?.memo||"";
   const dw=$("delWrap");dw.textContent="";
   if(t)dw.append(el("button",{type:"button",class:"btn d",onclick:askDelete},"削除"));
@@ -417,10 +486,8 @@ function askDelete(){
 }
 $("form").addEventListener("submit",async ev=>{
   ev.preventDefault();
-  const num=v=>v===""?null:+v;
   const data={
-    a:{title:$("aT").value.trim(),artist:$("aR").value.trim(),bpm:num($("aB").value),key:$("aK").value},
-    b:{title:$("bT").value.trim(),artist:$("bR").value.trim(),bpm:num($("bB").value),key:$("bK").value},
+    decks:readDecks(),
     title:$("mT").value.trim(),status:$("st").value,postDate:$("pd").value,
     memo:$("memo").value.trim(),
     sample:false,createdAt:editing?.createdAt||Date.now(),updatedAt:Date.now()

@@ -45,8 +45,11 @@ function clean(d) {
   const deck = (x) => ({ title: str(x?.title, 120), artist: str(x?.artist, 120), bpm: num(x?.bpm), key: str(x?.key, 3) });
   const status = ['idea', 'ready', 'posted'].includes(d?.status) ? d.status : 'idea';
   const postDate = /^\d{4}-\d{2}-\d{2}$/.test(d?.postDate || '') ? d.postDate : '';
+  // 曲は 1つのマッシュアップに最大8曲（古い a/b 形式も受け付ける）
+  const src = Array.isArray(d?.decks) && d.decks.length ? d.decks : [d?.a, d?.b].filter(Boolean);
+  const decks = src.slice(0, 8).map(deck);
   return {
-    a: deck(d?.a), b: deck(d?.b), title: str(d?.title, 120), status, postDate,
+    decks, title: str(d?.title, 120), status, postDate,
     memo: str(d?.memo, 2000), createdAt: num(d?.createdAt) || Date.now(), updatedAt: Date.now(),
   };
 }
