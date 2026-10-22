@@ -1,0 +1,7 @@
+{
+  "name": "mix-list",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MIX LIST（DJマッシュアップ投稿管理）",
+  "engines": { "node": ">=18" }
+}
