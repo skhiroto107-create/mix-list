@@ -318,7 +318,7 @@ function renderList(){
   let items=tab==="all"?tracks.slice():tracks.filter(t=>t.status===tab);
   items.sort((a,b)=>{const x=sortKey(a),y=sortKey(b);return x[0]-y[0]||x[1]-y[1]});
   if(!items.length){
-    list.append(el("div",{class:"empty"},tracks.length?"このステータスの曲はまだありません。":"まだ曲がありません。右下の「マッシュアップを追加」から、DECK A と DECK B の2曲を登録してください。"));
+    list.append(el("div",{class:"empty"},tracks.length?"このステータスの曲はまだありません。":"まだ曲がありません。右下の「追加」から、DECK A と DECK B の2曲を登録してください。"));
     return;
   }
   for(const t of items)list.append(card(t));
