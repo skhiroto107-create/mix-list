@@ -204,12 +204,12 @@ textarea{min-height:56px;resize:vertical}
 
 <dialog id="dlg">
   <form class="sheet" id="form" method="dialog">
-    <h2 id="fTitle">新しいマッシュアップ</h2>
+    <h2 id="fTitle">New Mix</h2>
     <div class="decks" id="decks"></div>
     <button type="button" class="btn-s addDeck" id="addDeck">＋ 曲を追加</button>
     <div class="live" id="liveMatch"></div>
     <div class="grid2">
-      <label class="full">マッシュアップ名（任意）<input id="mT" autocomplete="off"></label>
+      <label class="full">Mix名（任意）<input id="mT" autocomplete="off"></label>
       <label>ステータス<select id="st">
         <option value="idea">アイデア</option><option value="ready">完成</option><option value="posted">投稿済み</option></select></label>
       <label>投稿日（予定・実績）<input id="pd" type="date"></label>
@@ -323,7 +323,7 @@ function renderList(){
   let items=tab==="all"?tracks.slice():tracks.filter(t=>t.status===tab);
   items.sort((a,b)=>{const x=sortKey(a),y=sortKey(b);return x[0]-y[0]||x[1]-y[1]});
   if(!items.length){
-    list.append(el("div",{class:"empty"},tracks.length?"このステータスの曲はまだありません。":"まだ曲がありません。右下の「追加」から、マッシュアップする曲を登録してください。"));
+    list.append(el("div",{class:"empty"},tracks.length?"このステータスの曲はまだありません。":"まだ曲がありません。右下の「追加」から、Mixする曲を登録してください。"));
     return;
   }
   for(const t of items)list.append(card(t));
@@ -469,7 +469,7 @@ function updateLive(){
 $("addDeck").addEventListener("click",()=>{const n=$("decks").children.length;if(n>=MAXD)return;$("decks").append(deckBlock({},n));relabel();$("decks").lastChild.querySelector(".dT").focus()});
 function openForm(t){
   editing=t||null;
-  $("fTitle").textContent=t?"マッシュアップを編集":"新しいマッシュアップ";
+  $("fTitle").textContent=t?"Mixを編集":"New Mix";
   const ds=t?decksOf(t):[];while(ds.length<2)ds.push({});
   const box=$("decks");box.textContent="";ds.forEach((d,i)=>box.append(deckBlock(d,i)));relabel();
   $("mT").value=t?.title||"";$("st").value=t?.status||"idea";$("pd").value=t?.postDate||"";
