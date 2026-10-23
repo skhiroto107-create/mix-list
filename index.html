@@ -284,6 +284,8 @@ let view=new Date(new Date().getFullYear(),new Date().getMonth(),1), tracks=[], 
 let cat="";
 try{tab=localStorage.getItem("ml-tab")||"all";cat=localStorage.getItem("ml-cat")||""}catch(e){}
 const PRESET_CATS=["Future Bass","Tech House","Deep House","Progressive House","UK Garage","Drum & Bass","Dubstep","Trap","Drill","Phonk","Jersey Club","Amapiano","Afrobeats","Reggaeton","City Pop","Lo-fi Hip Hop","Boom Bap","Hyperpop","Synth-Pop","アニソン","ボカロ"];
+// タブの絞り込み：「完成」には投稿済みも含める（投稿しても完成タブから消えない）
+const inTab=(t,k)=>k==="all"||t.status===k||(k==="ready"&&t.status==="posted");
 const catsUsed=()=>[...new Set(tracks.map(t=>(t.category||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja"));
 
 /* ---------- helpers ---------- */
@@ -355,7 +357,7 @@ function renderTabs(){
   renderCats();
   const nav=$("tabs");nav.textContent="";
   for(const[k,label]of TABS){
-    const c=k==="all"?tracks.length:tracks.filter(t=>t.status===k).length;
+    const c=tracks.filter(t=>inTab(t,k)).length;
     nav.append(el("button",{class:"tab",role:"tab","aria-selected":String(tab===k),type:"button",onclick:()=>{tab=k;try{localStorage.setItem("ml-tab",k)}catch(e){}render()}},label,el("span",{class:"c mono"},c)));
   }
 }
@@ -366,7 +368,7 @@ function sortKey(t){
 }
 function renderList(){
   const list=$("list");list.textContent="";
-  let items=tab==="all"?tracks.slice():tracks.filter(t=>t.status===tab);
+  let items=tracks.filter(t=>inTab(t,tab));
   if(cat)items=items.filter(t=>(t.category||"")===cat);
   items.sort((a,b)=>{const x=sortKey(a),y=sortKey(b);return x[0]-y[0]||x[1]-y[1]});
   if(!items.length){
