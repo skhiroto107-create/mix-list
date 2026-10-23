@@ -226,7 +226,7 @@ textarea{min-height:56px;resize:vertical}
     <div class="live" id="liveMatch"></div>
     <div class="grid2">
       <label class="full">Mix名（任意）<input id="mT" autocomplete="off"></label>
-      <div class="full catrow"><label for="cat">カテゴリー（ジャンルなど）</label>
+      <div class="full catrow"><label for="cat">カテゴリー（ジャンルなど・DECK A の曲で判定）</label>
         <div class="catin"><input id="cat" list="catList" autocomplete="off" placeholder="空欄なら保存時に自動で判定（例：Future Bass、City Pop）"><button type="button" class="btn-s go" id="aiCat">ジャンルを判定</button></div>
         <div class="det" id="aiMsg" role="status"></div><div class="cands" id="cands"></div></div>
       <datalist id="catList"></datalist>
@@ -522,8 +522,9 @@ function askDelete(){
 }
 let aiOff=false;
 async function aiGenre(){
-  const ds=readDecks().filter(d=>d.title);
-  if(!ds.length)throw{message:"曲名を入れてから判定してください"};
+  // ジャンルは DECK A の曲で判定する
+  const ds=readDecks().slice(0,1).filter(d=>d.title);
+  if(!ds.length)throw{message:"DECK A の曲名を入れてから判定してください"};
   const ctrl=new AbortController(),tm=setTimeout(()=>ctrl.abort(),25000);
   let r;
   try{r=await fetch("/api/mix",{method:"POST",signal:ctrl.signal,headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"genre",pin,decks:ds,categories:catsUsed()})})}
@@ -555,7 +556,7 @@ $("form").addEventListener("submit",async ev=>{
   };
   if(data.status==="posted"&&!data.postDate)data.postDate=todayStr();
   $("save").disabled=true;
-  if(!data.category&&!aiOff&&data.decks.some(d=>d.title)){
+  if(!data.category&&!aiOff&&data.decks[0]&&data.decks[0].title){
     const m=$("aiMsg");m.className="det busy";m.textContent="ジャンルを判定中…";$("save").textContent="判定中…";
     try{data.category=(await aiGenre()).genre;$("cat").value=data.category}catch(e){}
     m.className="det";m.textContent="";$("save").textContent="保存";
