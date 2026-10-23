@@ -100,6 +100,11 @@ h1 span{color:inherit}
 .track .t{font-weight:500;font-size:15px;overflow-wrap:anywhere}
 .track .ar{color:var(--mute);font-size:12px;overflow-wrap:anywhere}
 .track .meta{font-family:var(--f-mono);font-size:10px;color:var(--mute)}
+.cats{display:flex;gap:8px;overflow-x:auto;margin-top:14px;margin-bottom:-14px;padding-bottom:2px}
+.cat{border:1px solid var(--line);background:transparent;border-radius:999px;padding:4px 12px;font-size:12px;color:var(--mute);white-space:nowrap}
+.cat:hover{color:var(--ink);border-color:var(--ink)}
+.cat[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.catlabel{display:inline-block;font-size:10px;letter-spacing:.06em;border:1px solid var(--ink);color:var(--ink);border-radius:999px;padding:0 8px;margin-bottom:4px;align-self:flex-start}
 .mtitle{font-family:var(--f-display);font-weight:600;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:2px}
 .chips{grid-column:1/-1;display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center;padding-left:20px}
 .chip{font-size:11px;color:var(--mute);white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
@@ -196,6 +201,7 @@ textarea{min-height:56px;resize:vertical}
   </section>
 
   <nav class="tabs" role="tablist" id="tabs"></nav>
+  <div class="cats" id="cats" role="group" aria-label="カテゴリーで絞り込み" hidden></div>
   <div class="notice" id="notice" hidden></div>
   <div class="list" id="list"></div>
 </div>
@@ -210,6 +216,8 @@ textarea{min-height:56px;resize:vertical}
     <div class="live" id="liveMatch"></div>
     <div class="grid2">
       <label class="full">Mix名（任意）<input id="mT" autocomplete="off"></label>
+      <label class="full">カテゴリー（ジャンルなど）<input id="cat" list="catList" autocomplete="off" placeholder="例：J-POP、EDM、ヒップホップ"></label>
+      <datalist id="catList"></datalist>
       <label>ステータス<select id="st">
         <option value="idea">アイデア</option><option value="ready">完成</option><option value="posted">投稿済み</option></select></label>
       <label>投稿日（予定・実績）<input id="pd" type="date"></label>
@@ -247,7 +255,10 @@ const KEYS=[];for(let n=1;n<=12;n++){KEYS.push(n+"A",n+"B")}
 const KEYNAME={"1A":"A♭m","1B":"B","2A":"E♭m","2B":"F♯","3A":"B♭m","3B":"D♭","4A":"Fm","4B":"A♭","5A":"Cm","5B":"E♭","6A":"Gm","6B":"B♭","7A":"Dm","7B":"F","8A":"Am","8B":"C","9A":"Em","9B":"G","10A":"Bm","10B":"D","11A":"F♯m","11B":"A","12A":"D♭m","12B":"E"};
 
 let view=new Date(new Date().getFullYear(),new Date().getMonth(),1), tracks=[], tab="all", db=null, editing=null, local=false;
-try{tab=localStorage.getItem("ml-tab")||"all"}catch(e){}
+let cat="";
+try{tab=localStorage.getItem("ml-tab")||"all";cat=localStorage.getItem("ml-cat")||""}catch(e){}
+const PRESET_CATS=["J-POP","K-POP","洋楽","ヒップホップ","R&B","EDM","ハウス","テクノ","アニソン","ボカロ","ロック","レゲエ"];
+const catsUsed=()=>[...new Set(tracks.map(t=>(t.category||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja"));
 
 /* ---------- helpers ---------- */
 const pad2=n=>String(n).padStart(2,"0");
@@ -306,7 +317,16 @@ function renderStats(){
 }
 
 
+function renderCats(){
+  const box=$("cats"),used=catsUsed();box.textContent="";
+  if(cat&&!used.includes(cat))cat="";
+  box.hidden=!used.length;if(!used.length)return;
+  const set=c=>{cat=c;try{localStorage.setItem("ml-cat",c)}catch(e){}render()};
+  box.append(el("button",{type:"button",class:"cat","aria-pressed":String(!cat),onclick:()=>set("")},"すべてのカテゴリー"));
+  for(const c of used)box.append(el("button",{type:"button",class:"cat","aria-pressed":String(cat===c),onclick:()=>set(cat===c?"":c)},c));
+}
 function renderTabs(){
+  renderCats();
   const nav=$("tabs");nav.textContent="";
   for(const[k,label]of TABS){
     const c=k==="all"?tracks.length:tracks.filter(t=>t.status===k).length;
@@ -321,6 +341,7 @@ function sortKey(t){
 function renderList(){
   const list=$("list");list.textContent="";
   let items=tab==="all"?tracks.slice():tracks.filter(t=>t.status===tab);
+  if(cat)items=items.filter(t=>(t.category||"")===cat);
   items.sort((a,b)=>{const x=sortKey(a),y=sortKey(b);return x[0]-y[0]||x[1]-y[1]});
   if(!items.length){
     list.append(el("div",{class:"empty"},tracks.length?"このステータスの曲はまだありません。":"まだ曲がありません。右下の「追加」から、Mixする曲を登録してください。"));
@@ -363,7 +384,7 @@ function card(t){
     el("div",{class:"sidebot"},
       t.postDate?el("span",{class:"date"},(t.status==="posted"?"投稿 ":"予定 ")+fmtMD(t.postDate)):null,
       el("button",{type:"button",class:"btn-s",onclick:()=>openForm(t)},"編集")));
-  return el("article",{class:"card"},el("div",{class:"mix"},t.title?el("div",{class:"mtitle"},t.title):null,...ds.map((d,i)=>trackRow(LET[i].toLowerCase(),d))),side,chips);
+  return el("article",{class:"card"},el("div",{class:"mix"},t.category?el("span",{class:"catlabel"},t.category):null,t.title?el("div",{class:"mtitle"},t.title):null,...ds.map((d,i)=>trackRow(LET[i].toLowerCase(),d))),side,chips);
 }
 
 /* ---------- data (Vercel API + Upstash Redis) ---------- */
@@ -472,7 +493,9 @@ function openForm(t){
   $("fTitle").textContent=t?"Mixを編集":"New Mix";
   const ds=t?decksOf(t):[];while(ds.length<2)ds.push({});
   const box=$("decks");box.textContent="";ds.forEach((d,i)=>box.append(deckBlock(d,i)));relabel();
-  $("mT").value=t?.title||"";$("st").value=t?.status||"idea";$("pd").value=t?.postDate||"";
+  $("mT").value=t?.title||"";$("cat").value=t?t.category||"":(cat||"");
+  const dl=$("catList");dl.textContent="";[...new Set([...catsUsed(),...PRESET_CATS])].forEach(c=>dl.append(el("option",{value:c})));
+  $("st").value=t?.status||"idea";$("pd").value=t?.postDate||"";
   $("memo").value=t?.memo||"";
   const dw=$("delWrap");dw.textContent="";
   if(t)dw.append(el("button",{type:"button",class:"btn d",onclick:askDelete},"削除"));
@@ -488,7 +511,7 @@ $("form").addEventListener("submit",async ev=>{
   ev.preventDefault();
   const data={
     decks:readDecks(),
-    title:$("mT").value.trim(),status:$("st").value,postDate:$("pd").value,
+    title:$("mT").value.trim(),category:$("cat").value.trim(),status:$("st").value,postDate:$("pd").value,
     memo:$("memo").value.trim(),
     sample:false,createdAt:editing?.createdAt||Date.now(),updatedAt:Date.now()
   };

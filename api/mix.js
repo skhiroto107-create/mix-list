@@ -49,7 +49,7 @@ function clean(d) {
   const src = Array.isArray(d?.decks) && d.decks.length ? d.decks : [d?.a, d?.b].filter(Boolean);
   const decks = src.slice(0, 8).map(deck);
   return {
-    decks, title: str(d?.title, 120), status, postDate,
+    decks, title: str(d?.title, 120), category: str(d?.category, 40).trim(), status, postDate,
     memo: str(d?.memo, 2000), createdAt: num(d?.createdAt) || Date.now(), updatedAt: Date.now(),
   };
 }
