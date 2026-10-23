@@ -222,7 +222,7 @@ textarea{min-height:56px;resize:vertical}
     <div class="grid2">
       <label class="full">Mix名（任意）<input id="mT" autocomplete="off"></label>
       <div class="full catrow"><label for="cat">カテゴリー（ジャンルなど）</label>
-        <div class="catin"><input id="cat" list="catList" autocomplete="off" placeholder="空欄なら保存時にAIが自動で判定"><button type="button" class="btn-s go" id="aiCat">AIで判定</button></div>
+        <div class="catin"><input id="cat" list="catList" autocomplete="off" placeholder="空欄なら保存時に自動で判定"><button type="button" class="btn-s go" id="aiCat">ジャンルを判定</button></div>
         <div class="det" id="aiMsg" role="status"></div></div>
       <datalist id="catList"></datalist>
       <label>ステータス<select id="st">
@@ -522,16 +522,15 @@ async function aiGenre(){
   const ctrl=new AbortController(),tm=setTimeout(()=>ctrl.abort(),12000);
   let r;
   try{r=await fetch("/api/mix",{method:"POST",signal:ctrl.signal,headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"genre",pin,decks:ds,categories:catsUsed()})})}
-  catch(e){throw{message:"AIの応答がありませんでした"}}
+  catch(e){throw{message:"判定の応答がありませんでした。もう一度お試しください"}}
   finally{clearTimeout(tm)}
   const j=await r.json().catch(()=>({}));
-  if(r.status===503)aiOff=true;
-  if(!r.ok)throw{message:j.error||"AIでの判定に失敗しました"};
-  return j.genre;
+  if(!r.ok)throw{message:j.error||"ジャンルを判定できませんでした"};
+  return j;
 }
 $("aiCat").addEventListener("click",async()=>{
-  const b=$("aiCat"),m=$("aiMsg");b.disabled=true;m.className="det busy";m.textContent="AIがジャンルを判定中…";
-  try{const g=await aiGenre();$("cat").value=g;m.className="det";m.textContent="AIの判定: "+g+"（書き換えもできます）"}
+  const b=$("aiCat"),m=$("aiMsg");b.disabled=true;m.className="det busy";m.textContent="ジャンルを判定中…";
+  try{const g=await aiGenre();$("cat").value=g.genre;m.className="det";m.textContent="判定: "+g.genre+(g.source==="ai"?"（AIの推測）":"（Apple Musicのジャンルより）")+" ・書き換えもできます"}
   catch(e){m.className="det";m.textContent=e.message}
   finally{b.disabled=false}
 });
@@ -546,8 +545,8 @@ $("form").addEventListener("submit",async ev=>{
   if(data.status==="posted"&&!data.postDate)data.postDate=todayStr();
   $("save").disabled=true;
   if(!data.category&&!aiOff&&data.decks.some(d=>d.title)){
-    const m=$("aiMsg");m.className="det busy";m.textContent="AIがジャンルを判定中…";$("save").textContent="判定中…";
-    try{data.category=await aiGenre();$("cat").value=data.category}catch(e){}
+    const m=$("aiMsg");m.className="det busy";m.textContent="ジャンルを判定中…";$("save").textContent="判定中…";
+    try{data.category=(await aiGenre()).genre;$("cat").value=data.category}catch(e){}
     m.className="det";m.textContent="";$("save").textContent="保存";
   }
   try{await saveTrack(editing?.id,data);$("dlg").close()}catch(e){showNotice(e)}
