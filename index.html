@@ -100,6 +100,11 @@ h1 span{color:inherit}
 .track .t{font-weight:500;font-size:15px;overflow-wrap:anywhere}
 .track .ar{color:var(--mute);font-size:12px;overflow-wrap:anywhere}
 .track .meta{font-family:var(--f-mono);font-size:10px;color:var(--mute)}
+.catrow{grid-column:1/-1;display:flex;flex-direction:column;gap:5px;min-width:0}
+.catrow>label{font-size:11px;color:var(--mute);letter-spacing:.03em}
+.catin{display:flex;gap:8px;align-items:center}
+.catin input{flex:1}
+.catin .btn-s{white-space:nowrap}
 .cats{display:flex;gap:8px;overflow-x:auto;margin-top:14px;margin-bottom:-14px;padding-bottom:2px}
 .cat{border:1px solid var(--line);background:transparent;border-radius:999px;padding:4px 12px;font-size:12px;color:var(--mute);white-space:nowrap}
 .cat:hover{color:var(--ink);border-color:var(--ink)}
@@ -216,7 +221,9 @@ textarea{min-height:56px;resize:vertical}
     <div class="live" id="liveMatch"></div>
     <div class="grid2">
       <label class="full">Mix名（任意）<input id="mT" autocomplete="off"></label>
-      <label class="full">カテゴリー（ジャンルなど）<input id="cat" list="catList" autocomplete="off" placeholder="例：J-POP、EDM、ヒップホップ"></label>
+      <div class="full catrow"><label for="cat">カテゴリー（ジャンルなど）</label>
+        <div class="catin"><input id="cat" list="catList" autocomplete="off" placeholder="空欄なら保存時にAIが自動で判定"><button type="button" class="btn-s go" id="aiCat">AIで判定</button></div>
+        <div class="det" id="aiMsg" role="status"></div></div>
       <datalist id="catList"></datalist>
       <label>ステータス<select id="st">
         <option value="idea">アイデア</option><option value="ready">完成</option><option value="posted">投稿済み</option></select></label>
@@ -493,6 +500,7 @@ function openForm(t){
   $("fTitle").textContent=t?"Mixを編集":"New Mix";
   const ds=t?decksOf(t):[];while(ds.length<2)ds.push({});
   const box=$("decks");box.textContent="";ds.forEach((d,i)=>box.append(deckBlock(d,i)));relabel();
+  $("aiMsg").textContent="";$("aiMsg").className="det";
   $("mT").value=t?.title||"";$("cat").value=t?t.category||"":(cat||"");
   const dl=$("catList");dl.textContent="";[...new Set([...catsUsed(),...PRESET_CATS])].forEach(c=>dl.append(el("option",{value:c})));
   $("st").value=t?.status||"idea";$("pd").value=t?.postDate||"";
@@ -507,6 +515,26 @@ function askDelete(){
     el("button",{type:"button",class:"btn-s go",onclick:async()=>{try{await removeTrack(editing.id);$("dlg").close()}catch(e){showNotice(e)}}},"削除する"),
     el("button",{type:"button",class:"btn-s",onclick:()=>openForm(editing)},"やめる")));
 }
+let aiOff=false;
+async function aiGenre(){
+  const ds=readDecks().filter(d=>d.title);
+  if(!ds.length)throw{message:"曲名を入れてから判定してください"};
+  const ctrl=new AbortController(),tm=setTimeout(()=>ctrl.abort(),12000);
+  let r;
+  try{r=await fetch("/api/mix",{method:"POST",signal:ctrl.signal,headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"genre",pin,decks:ds,categories:catsUsed()})})}
+  catch(e){throw{message:"AIの応答がありませんでした"}}
+  finally{clearTimeout(tm)}
+  const j=await r.json().catch(()=>({}));
+  if(r.status===503)aiOff=true;
+  if(!r.ok)throw{message:j.error||"AIでの判定に失敗しました"};
+  return j.genre;
+}
+$("aiCat").addEventListener("click",async()=>{
+  const b=$("aiCat"),m=$("aiMsg");b.disabled=true;m.className="det busy";m.textContent="AIがジャンルを判定中…";
+  try{const g=await aiGenre();$("cat").value=g;m.className="det";m.textContent="AIの判定: "+g+"（書き換えもできます）"}
+  catch(e){m.className="det";m.textContent=e.message}
+  finally{b.disabled=false}
+});
 $("form").addEventListener("submit",async ev=>{
   ev.preventDefault();
   const data={
@@ -517,6 +545,11 @@ $("form").addEventListener("submit",async ev=>{
   };
   if(data.status==="posted"&&!data.postDate)data.postDate=todayStr();
   $("save").disabled=true;
+  if(!data.category&&!aiOff&&data.decks.some(d=>d.title)){
+    const m=$("aiMsg");m.className="det busy";m.textContent="AIがジャンルを判定中…";$("save").textContent="判定中…";
+    try{data.category=await aiGenre();$("cat").value=data.category}catch(e){}
+    m.className="det";m.textContent="";$("save").textContent="保存";
+  }
   try{await saveTrack(editing?.id,data);$("dlg").close()}catch(e){showNotice(e)}
   $("save").disabled=false;
 });

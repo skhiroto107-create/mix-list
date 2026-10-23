@@ -54,6 +54,40 @@ function clean(d) {
   };
 }
 
+// ---------- AI でジャンルを判定（Claude API） ----------
+const AI_KEY = process.env.ANTHROPIC_API_KEY || '';
+const AI_MODEL = process.env.GENRE_MODEL || 'claude-haiku-5-5';
+async function guessGenre(decks, known) {
+  if (!AI_KEY) throw Object.assign(new Error('AIの設定（ANTHROPIC_API_KEY）がまだです'), { status: 503 });
+  const songs = (Array.isArray(decks) ? decks : []).slice(0, 8)
+    .map((d) => [String(d?.title || '').slice(0, 120), String(d?.artist || '').slice(0, 120)])
+    .filter(([t]) => t);
+  if (!songs.length) throw Object.assign(new Error('曲名を入れてから判定してください'), { status: 400 });
+  const cats = (Array.isArray(known) ? known : []).map((c) => String(c).slice(0, 40)).filter(Boolean).slice(0, 50);
+  const prompt =
+    'DJが作るマッシュアップに使う曲の一覧です。このマッシュアップ全体を表すジャンルを1つだけ決めてください。\n\n' +
+    songs.map(([t, a], i) => `${i + 1}. ${t}${a ? ' / ' + a : ''}`).join('\n') +
+    '\n\nルール:\n' +
+    '- 日本のSNSで通じる短いジャンル名にする（例: J-POP, K-POP, 洋楽, ヒップホップ, R&B, EDM, ハウス, テクノ, アニソン, ボカロ, ロック, レゲエ）\n' +
+    (cats.length ? '- 次の既存カテゴリーに当てはまるなら、その表記をそのまま使う: ' + cats.join(', ') + '\n' : '') +
+    '- 曲ごとにジャンルが違う場合は、マッシュアップとして一番しっくりくるものを選ぶ\n' +
+    '- 知らない曲は曲名とアーティスト名から推測する\n' +
+    '- 出力は {"genre":"ジャンル名"} のJSONだけ';
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': AI_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: AI_MODEL, max_tokens: 60, messages: [{ role: 'user', content: prompt }] }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error('AIでの判定に失敗しました' + (j?.error?.message ? '（' + j.error.message + '）' : '')), { status: 502 });
+  const text = (j.content || []).map((c) => c.text || '').join('');
+  let genre = '';
+  try { genre = JSON.parse((text.match(/\{[\s\S]*\}/) || ['{}'])[0]).genre || ''; } catch (e) { /* noop */ }
+  genre = String(genre).replace(/[\r\n]/g, ' ').trim().slice(0, 40);
+  if (!genre) throw Object.assign(new Error('ジャンルを判定できませんでした'), { status: 502 });
+  return genre;
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST のみ対応しています' });
@@ -75,6 +109,8 @@ module.exports = async (req, res) => {
       await kv([['HDEL', KEY, body.id]]);
       return res.json({ ok: true });
     }
+
+    if (body.action === 'genre') return res.json({ genre: await guessGenre(body.decks, body.categories) });
 
     return res.status(400).json({ error: '不明な操作です' });
   } catch (e) {
