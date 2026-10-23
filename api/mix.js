@@ -13,6 +13,7 @@ async function kv(cmds) {
       if (op === 'HGETALL') return [...mem.entries()].flat();
       if (op === 'HSET') { mem.set(a, b); return 1; }
       if (op === 'HDEL') { mem.delete(a); return 1; }
+      if (op === 'HGET') return mem.has(a) ? mem.get(a) : null;
       return null;
     });
   }
@@ -36,6 +37,17 @@ async function list() {
   return out;
 }
 
+// ---------- 動画（Vercel Blob） ----------
+const isBlobUrl = (u) => /^https:\/\/[a-z0-9.-]+\.blob\.vercel-storage\.com\//i.test(String(u || ''));
+async function delBlob(url) {
+  if (!isBlobUrl(url) || !process.env.BLOB_READ_WRITE_TOKEN) return;
+  try { const { del } = require('@vercel/blob'); await del(url); } catch (e) { /* 削除できなくても保存は続ける */ }
+}
+async function getTrack(id) {
+  const [v] = await kv([['HGET', KEY, id]]);
+  try { return v ? JSON.parse(v) : null; } catch (e) { return null; }
+}
+
 const isId = (s) => /^[A-Za-z0-9_-]{1,40}$/.test(String(s || ''));
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
@@ -48,8 +60,10 @@ function clean(d) {
   // 曲は 1つのマッシュアップに最大8曲（古い a/b 形式も受け付ける）
   const src = Array.isArray(d?.decks) && d.decks.length ? d.decks : [d?.a, d?.b].filter(Boolean);
   const decks = src.slice(0, 8).map(deck);
+  const v = d?.video;
+  const video = v && isBlobUrl(v.url) ? { url: String(v.url).slice(0, 500), name: str(v.name, 200), size: num(v.size), type: str(v.type, 60) } : null;
   return {
-    decks, title: str(d?.title, 120), category: str(d?.category, 40).trim(), status, postDate,
+    decks, video, title: str(d?.title, 120), category: str(d?.category, 40).trim(), status, postDate,
     memo: str(d?.memo, 2000), createdAt: num(d?.createdAt) || Date.now(), updatedAt: Date.now(),
   };
 }
@@ -241,13 +255,26 @@ module.exports = async (req, res) => {
     if (body.action === 'save') {
       const id = body.id && isId(body.id) ? body.id : newId();
       const data = clean(body.data);
+      const old = body.id ? await getTrack(id) : null;
       await kv([['HSET', KEY, id, JSON.stringify(data)]]);
+      // 動画を差し替え・外したら古い動画を消す（無料枠 1GB を節約）
+      if (old && old.video && old.video.url !== (data.video && data.video.url)) await delBlob(old.video.url);
       return res.json({ ok: true, track: { ...data, id } });
     }
 
     if (body.action === 'delete') {
       if (!isId(body.id)) return res.status(400).json({ error: 'id が不正です' });
+      const old = await getTrack(body.id);
       await kv([['HDEL', KEY, body.id]]);
+      if (old && old.video) await delBlob(old.video.url);
+      return res.json({ ok: true });
+    }
+
+    // 保存せずに閉じたときのアップロード済み動画を片付ける（どのMixにも使われていない場合だけ）
+    if (body.action === 'discard') {
+      const urls = (Array.isArray(body.urls) ? body.urls : []).filter(isBlobUrl).slice(0, 10);
+      const used = new Set((await list()).map((t) => t.video && t.video.url).filter(Boolean));
+      for (const u of urls) if (!used.has(u)) await delBlob(u);
       return res.json({ ok: true });
     }
 

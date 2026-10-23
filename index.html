@@ -107,6 +107,18 @@ h1 span{color:inherit}
 .cand{border:1px solid var(--line);background:transparent;border-radius:999px;padding:3px 10px;font-size:11px;color:var(--mute)}
 .cand:hover{color:var(--ink);border-color:var(--ink)}
 .cand[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.vidrow{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:14px}
+.vlabel{font-size:11px;color:var(--mute);letter-spacing:.03em}
+.vid{width:100%;max-height:360px;border-radius:10px;background:#000;display:block}
+.vmeta{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--mute)}
+.vmeta .name{overflow-wrap:anywhere;min-width:0}
+.vtools{display:flex;gap:6px}
+.prog{height:4px;border-radius:2px;background:var(--pad);overflow:hidden}
+.prog i{display:block;height:100%;background:var(--ink);width:0;transition:width .2s}
+.vnote{font-size:10px;color:var(--mute)}
+.vwrap{grid-column:1/-1}
+.chip.vbtn{border:0;background:none;padding:0;cursor:pointer;color:var(--ink);font:inherit;font-size:11px}
+.chip.vbtn::before{display:none}
 .catin{display:flex;gap:8px;align-items:center}
 .catin input{flex:1}
 .catin .btn-s{white-space:nowrap}
@@ -235,6 +247,7 @@ textarea{min-height:56px;resize:vertical}
       <label>投稿日（予定・実績）<input id="pd" type="date"></label>
     </div>
     <label class="full">メモ<textarea id="memo" placeholder="使うパート、フック、撮影メモなど"></textarea></label>
+    <div class="vidrow"><span class="vlabel">動画</span><div id="vidBox"></div></div>
     <div class="actions">
       <div id="delWrap"></div>
       <div class="r">
@@ -256,6 +269,7 @@ textarea{min-height:56px;resize:vertical}
 
 
 <script src="/analyze.js" defer></script>
+<script src="/vendor/blob-client.js" defer></script>
 <script>
 (function(){
 const $=id=>document.getElementById(id);
@@ -386,6 +400,15 @@ function card(t){
     const mx=Math.max(...cp.gaps.map(x=>x.g));
     chips.append(el("span",{class:"chip mono "+(mx<=6?"match":"clash")},(ds.length>2?"BPM差 最大 ":"BPM差 ")+mx.toFixed(1)+"%"));
   }
+  let vwrap=null;
+  if(t.video&&t.video.url){
+    vwrap=el("div",{class:"vwrap"});vwrap.hidden=true;
+    chips.append(el("button",{type:"button",class:"chip vbtn","aria-expanded":"false",onclick:e=>{
+      const open=vwrap.hidden;vwrap.hidden=!open;e.currentTarget.setAttribute("aria-expanded",String(open));e.currentTarget.textContent=open?"▼ 動画を閉じる":"▶ 動画";
+      if(open&&!vwrap.firstChild)vwrap.append(el("video",{class:"vid",src:t.video.url,controls:"",playsinline:"",preload:"metadata"}));
+      if(!open){const v=vwrap.querySelector("video");if(v)v.pause()}
+    }},"▶ 動画"));
+  }
   if(t.memo)chips.append(el("span",{class:"chip",title:t.memo},t.memo.length>24?t.memo.slice(0,24)+"…":t.memo));
   const seg=el("div",{class:"seg",role:"group","aria-label":"ステータス"});
   FLOW.forEach((k,i)=>{
@@ -396,7 +419,7 @@ function card(t){
     el("div",{class:"sidebot"},
       t.postDate?el("span",{class:"date"},(t.status==="posted"?"投稿 ":"予定 ")+fmtMD(t.postDate)):null,
       el("button",{type:"button",class:"btn-s",onclick:()=>openForm(t)},"編集")));
-  return el("article",{class:"card"},el("div",{class:"mix"},t.category?el("span",{class:"catlabel"},t.category):null,t.title?el("div",{class:"mtitle"},t.title):null,...ds.map((d,i)=>trackRow(LET[i].toLowerCase(),d))),side,chips);
+  return el("article",{class:"card"},el("div",{class:"mix"},t.category?el("span",{class:"catlabel"},t.category):null,t.title?el("div",{class:"mtitle"},t.title):null,...ds.map((d,i)=>trackRow(LET[i].toLowerCase(),d))),side,chips,vwrap);
 }
 
 /* ---------- data (Vercel API + Upstash Redis) ---------- */
@@ -505,6 +528,7 @@ function openForm(t){
   $("fTitle").textContent=t?"Mixを編集":"New Mix";
   const ds=t?decksOf(t):[];while(ds.length<2)ds.push({});
   const box=$("decks");box.textContent="";ds.forEach((d,i)=>box.append(deckBlock(d,i)));relabel();
+  formVideo=t&&t.video?{...t.video}:null;uploads=[];vErr="";saved=false;renderVideo();
   $("aiMsg").textContent="";$("aiMsg").className="det";$("cands").textContent="";
   $("mT").value=t?.title||"";$("cat").value=t?t.category||"":(cat||"");
   const dl=$("catList");dl.textContent="";[...new Set([...catsUsed(),...PRESET_CATS])].forEach(c=>dl.append(el("option",{value:c})));
@@ -546,10 +570,53 @@ $("aiCat").addEventListener("click",async()=>{
   catch(e){m.className="det";m.textContent=e.message}
   finally{b.disabled=false}
 });
+/* ---------- 動画 ---------- */
+const VMAX=500*1024*1024;
+let formVideo=null,uploads=[],uploading=false,vProg=0,vErr="",saved=false;
+const mb=n=>n>=1073741824?(n/1073741824).toFixed(1)+"GB":(n/1048576).toFixed(n<10485760?1:0)+"MB";
+function renderVideo(){
+  const box=$("vidBox");box.textContent="";
+  const pickBtn=label=>{const f=el("input",{type:"file",accept:"video/*","aria-label":"動画ファイルを選ぶ"});f.addEventListener("change",()=>{const x=f.files&&f.files[0];f.value="";if(x)pickVideo(x)});return el("label",{class:"filebtn"},label,f)};
+  if(uploading){
+    box.append(el("div",{class:"vmeta"},el("span",{},"アップロード中… "+Math.round(vProg)+"%"),el("span",{class:"vnote"},"終わるまでこの画面を開いたままにしてください")),el("div",{class:"prog"},el("i",{style:"width:"+vProg+"%"})));
+    return;
+  }
+  if(formVideo){
+    box.append(el("video",{class:"vid",src:formVideo.url,controls:"",playsinline:"",preload:"metadata"}),
+      el("div",{class:"vmeta"},el("span",{class:"name"},(formVideo.name||"動画")+(formVideo.size?" · "+mb(formVideo.size):"")),
+        el("div",{class:"vtools"},pickBtn("差し替え"),el("button",{type:"button",class:"btn-s",onclick:()=>{formVideo=null;renderVideo()}},"外す"))));
+  }else{
+    box.append(el("div",{class:"vmeta"},pickBtn("＋ 動画を選ぶ"),el("span",{class:"vnote"},"1本500MBまで・無料枠は合計1GB")));
+  }
+  if(vErr)box.append(el("div",{class:"det"},vErr));
+}
+async function pickVideo(file){
+  vErr="";
+  if(!/^video\//.test(file.type||"")&&!/\.(mp4|mov|m4v|webm)$/i.test(file.name)){vErr="動画ファイル（mp4・mov など）を選んでください";return renderVideo()}
+  if(file.size>VMAX){vErr="動画が大きすぎます（"+mb(file.size)+"）。500MB以下にしてください";return renderVideo()}
+  if(!window.VercelBlob){vErr="アップロードの準備ができていません。ページを開き直してください";return renderVideo()}
+  uploading=true;vProg=0;$("save").disabled=true;renderVideo();
+  const safe=file.name.replace(/[^\w.\-]+/g,"_").slice(-80)||"video.mp4";
+  try{
+    const r=await VercelBlob.upload("mix-list/videos/"+safe,file,{access:"public",handleUploadUrl:"/api/upload",clientPayload:pin,contentType:file.type||"video/mp4",multipart:file.size>50*1024*1024,
+      onUploadProgress:e=>{vProg=e.percentage||0;const i=$("vidBox").querySelector(".prog i"),t=$("vidBox").querySelector(".vmeta span");if(i)i.style.width=vProg+"%";if(t)t.textContent="アップロード中… "+Math.round(vProg)+"%"}});
+    uploads.push(r.url);formVideo={url:r.url,name:file.name,size:file.size,type:file.type||""};
+  }catch(e){
+    const m=String(e&&e.message||"");
+    vErr=/PIN/.test(m)?"PINが違うためアップロードできません":/設定されていません|token/i.test(m)?"動画の保存先（Vercel Blob）がまだ設定されていません":/limit|quota|exceed/i.test(m)?"動画の保存容量（無料枠）が足りません。使わない動画を外してください":"アップロードできませんでした。通信状況を確認して、もう一度お試しください";
+  }finally{uploading=false;$("save").disabled=false;renderVideo()}
+}
+function discardUploads(keep){
+  const urls=uploads.filter(u=>u!==keep);uploads=[];
+  if(urls.length)api("discard",{urls}).catch(()=>{});
+}
+$("dlg").addEventListener("close",()=>{if(!saved)discardUploads(editing&&editing.video&&editing.video.url);saved=false});
+$("dlg").addEventListener("cancel",e=>{if(uploading)e.preventDefault()});
+
 $("form").addEventListener("submit",async ev=>{
   ev.preventDefault();
   const data={
-    decks:readDecks(),
+    decks:readDecks(),video:formVideo,
     title:$("mT").value.trim(),category:$("cat").value.trim(),status:$("st").value,postDate:$("pd").value,
     memo:$("memo").value.trim(),
     sample:false,createdAt:editing?.createdAt||Date.now(),updatedAt:Date.now()
@@ -561,10 +628,10 @@ $("form").addEventListener("submit",async ev=>{
     try{data.category=(await aiGenre()).genre;$("cat").value=data.category}catch(e){}
     m.className="det";m.textContent="";$("save").textContent="保存";
   }
-  try{await saveTrack(editing?.id,data);$("dlg").close()}catch(e){showNotice(e)}
+  try{await saveTrack(editing?.id,data);saved=true;discardUploads(formVideo&&formVideo.url);$("dlg").close()}catch(e){showNotice(e)}
   $("save").disabled=false;
 });
-$("cancel").addEventListener("click",()=>$("dlg").close());
+$("cancel").addEventListener("click",()=>{if(!uploading)$("dlg").close()});
 $("addBtn").addEventListener("click",()=>openForm(null));
 
 /* ---------- boot ---------- */

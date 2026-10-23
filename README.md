@@ -7,6 +7,7 @@ DJ マッシュアップ投稿の管理アプリ。スマホと PC で同じデ�
 | 曲の登録 | 1つのマッシュアップに2〜8曲（DECK A〜H）。曲名・アーティスト・BPM・キー（Camelot）、マッシュアップ名、投稿日、メモ |
 | 自動検出 | 各曲の「音源から検出」で音源ファイルを選ぶと、BPM とキーを自動入力（ブラウザ内で解析・音源は送信しない）。ファイル名「アーティスト - 曲名」から曲名も入る |
 | ジャンル | カテゴリー欄が空なら、保存時に DECK A の曲名・アーティストから細かいジャンル（Progressive House、City Pop、Jersey Club Rap など）を自動入力。MusicBrainz（無料・キー不要）を使い、見つからなければ Gemini（任意）→ Apple Music の大分類。「ジャンルを判定」ボタンで候補が並び、タップで切り替え・手で書き換えも可 |
+| 動画 | 各Mixに完成動画を添付して一覧から再生（Vercel Blob・1本500MBまで・無料枠は合計1GB）。差し替え・削除すると古い動画は自動で消える |
 | 相性チェック | DECK A と各曲のキー（同じ・隣接・平行調）と BPM 差（倍テン・半テン込み） |
 | ステータス | アイデア › 完成 › 投稿済み をタップで切り替え |
 | 投稿状況 | 連続投稿日数・ストック数・今月の投稿数、月カレンダー |
@@ -18,7 +19,9 @@ DJ マッシュアップ投稿の管理アプリ。スマホと PC で同じデ�
    → `KV_REST_API_URL` と `KV_REST_API_TOKEN` が自動で入ります（無料枠で十分です）。
 3. **Settings → Environment Variables** に `ADMIN_PIN`（例：4桁の数字）を追加。
    - 設定しないと URL を知っている人は誰でも見たり編集したりできてしまうので、必ず設定してください。
-4. （任意）カタログにない曲も AI で推測したい場合は、https://aistudio.google.com/apikey で無料の API キーを作り、環境変数 `GEMINI_API_KEY` に設定。
+4. **Storage → Create Database → Blob** を作成（アクセスは **Public**）して `mix-list` に接続（動画を使う場合）。
+   → `BLOB_READ_WRITE_TOKEN` が自動で入ります。
+4-2. （任意）カタログにない曲も AI で推測したい場合は、https://aistudio.google.com/apikey で無料の API キーを作り、環境変数 `GEMINI_API_KEY` に設定。
    - 設定しなくても、Apple のカタログにある曲は無料で判定できます。
 5. **Deployments → 最新の … → Redeploy**（環境変数を反映するため）。
 6. スマホの Safari で開いて PIN を入力 → 共有 → **ホーム画面に追加**。黒いアイコンで追加されます。
@@ -28,6 +31,7 @@ DJ マッシュアップ投稿の管理アプリ。スマホと PC で同じデ�
 ```
 index.html             画面
 analyze.js             音源ファイルから BPM・キーを検出
+api/upload.js          動画アップロード用トークンの発行（PIN 確認・動画のみ・500MBまで）
 vendor/                解析エンジン（Essentia.js）
 api/mix.js             読み込み・保存・削除の API（Upstash Redis のハッシュ mixlist:tracks）
 manifest.webmanifest   ホーム画面用の設定
